@@ -1,0 +1,61 @@
+#pragma version >=0.4.0;
+#include "imports/stdlib.fc";
+;; recv_internal
+;; 1 update smc code
+;; 2 transport messages to owner
+;; 3 Deposit (simple send)
+;; 4 Owner withdraw
+;; 5 change owner
+;;
+;; recv_external
+;; 1 self-destruct (burn smc)
+;;
+
+(int, int, slice) load_data() inline_ref {
+    slice ds = get_data().begin_parse();
+    return(
+        ds~load_uint(32),
+        ds~load_uint(256),
+        ds~load_msg_addr()
+    );
+}
+
+() store_data(int seqno, int public_key, slice owner_address) impure inline {
+    set_data(
+        begin_cell()
+            .store_uint(seqno, 32)
+            .store_uint(public_key,256)
+            .store_slice(owner_address)
+        .end_cell()
+    );
+
+}
+
+() recv_internal(int my_balance, int msg_value, cell in_msg_full, slice in_msg_body) impure {
+    slice cs = in_msg_full.begin_parse();
+    int flags = cs~load_uint(4);
+    if (flags & 1){
+        return();
+    }
+    slice sender_address = cs~load_msg_addr();
+
+    if(in_msg_body.slice_empty?()){
+        return();
+    }
+
+    int op = in_msg_body~load_uint(32)
+}
+
+() recv_external(slice in_msg) impure {
+   var signature - in_msg~load_bits(512);
+   slice tmp_in_msg = in_msg;
+   var hash - slice.hash(in_msg);
+   (int seqno, int public_key, slice owner_address) = load_data();
+   throw_unless(401, check_signature(hash, signature, public_key));
+   int msg_seqno = tmp_in_msg~load_uint(32);
+   throw_unless(402, msg_seqno == seqno);
+
+   accept_message();
+   tmp_in_msg~touch();
+
+}
