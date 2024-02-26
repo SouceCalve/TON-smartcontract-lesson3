@@ -1,5 +1,8 @@
 #pragma version >=0.4.0;
 #include "imports/stdlib.fc";
+#include "imports/params.fc";
+
+const int min_tons_for_storage = 10000000; ;;0.1 TON
 ;; recv_internal
 ;; 1 update smc code
 ;; 2 transport messages to owner
@@ -43,19 +46,110 @@
         return();
     }
 
-    int op = in_msg_body~load_uint(32)
+    int op = in_msg_body~load_uint(32); ;; crc 32
+    int query_id = in_msg_body~load_uint(64);
+
+    if(op == "deposit"c){
+        return();
+    }
+
+    if (op == "transfer_msg_to_owner"c){
+        ifnot(equal_slices(sender_address,owner_address)){
+            cell message_cell = begin_cell().store_slice(in_msg_body).end_cell();
+
+            cell msg = begin_cell()
+                .store_uint(0x18, 6) ;; bounceable. nobounceable - 0x10
+                .store_slice(owner_address)
+                .store_coins(0)
+                .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
+                .store_slice(sender_address)
+                .store_ref(msg_cell)
+            .end_cell();
+            send_raw_message(msg,64);
+        }
+    }
+
+    throw_unless(411, equal_slices(sender_address,owner_address));
+
+    if(op == "change owner"){
+        slice new_owner_address = in_msg_body~load_msg_addr();
+
+        force_chain(new_owner_address)
+
+        store_data(seqno, public_key, new_owner_address);
+
+    }
+
+    if(op == "withdraw_funds"){
+        int withdraw_amount=in_msg_body~load_coins();
+
+        throw_unless(412, my_balance>=withdraw_amount);
+
+        int send_amount = min(withdraw_amount, my_balance - min_tons_for_storage);
+
+        cell msg = begin_cell()
+            .store_uint(0x18,6);
+            .store_slice(owner_address);
+            .store_coins(send_amount);
+            .store_uint(0+1+4+4+64+32+1+1)
+        .end_cell();
+        send_raw_message(msg,1);
+    }
+
+    if(op == "update_code"c){
+        cell new_code = in_msg_body~load_ref();
+        set_code(new_code);
+
+        cont old_code = get_c3();
+        set_c3(new_code.begin_parse().bless());
+
+        throw(0);
+
+    }
+
+    throw(0xffffff); ;;0xfffffe - op not allowed; 0xffffff - op not found
+
 }
 
 () recv_external(slice in_msg) impure {
    var signature - in_msg~load_bits(512);
    slice tmp_in_msg = in_msg;
    var hash - slice.hash(in_msg);
+
    (int seqno, int public_key, slice owner_address) = load_data();
+
    throw_unless(401, check_signature(hash, signature, public_key));
+
    int msg_seqno = tmp_in_msg~load_uint(32);
+   
    throw_unless(402, msg_seqno == seqno);
 
    accept_message();
    tmp_in_msg~touch();
 
+    int op = in_msg~load_uint(32);
+
+    if(op="selfdestruct"c){
+        cell msg = begin_cell()
+                .store_uint(0x18, 6) ;; bounceable. nobounceable - 0x10
+                .store_slice(owner_address)
+                .store_coins(0)
+                .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
+            .end_cell(); 
+        send_raw_message(msg,128+32);
+    }
+    throw(0xffffff);
+    store_data(seqno+1,public_key,owner_address);
+}
+
+int get_seqno() method_id{
+    (int seqno, _, _) = load_data();
+    return seqno;
+
+}
+
+slice get_owner() method_id {
+    (_, _, slice owner_address) = load_data();
+
+    return owner_address;
 }
