@@ -1,7 +1,6 @@
 #pragma version >=0.4.0;
 #include "imports/stdlib.fc";
 #include "imports/params.fc";
-
 const int min_tons_for_storage = 10000000; ;;0.1 TON
 ;; recv_internal
 ;; 1 update smc code
@@ -88,11 +87,11 @@ const int min_tons_for_storage = 10000000; ;;0.1 TON
         int send_amount = min(withdraw_amount, my_balance - min_tons_for_storage);
 
         cell msg = begin_cell()
-            .store_uint(0x18,6);
-            .store_slice(owner_address);
-            .store_coins(send_amount);
-            .store_uint(0+1+4+4+64+32+1+1)
-        .end_cell();
+                .store_uint(0x18,6);
+                .store_slice(owner_address);
+                .store_coins(send_amount);
+                .store_uint(0+1+4+4+64+32+1+1)
+            .end_cell();
         send_raw_message(msg,1);
     }
 
